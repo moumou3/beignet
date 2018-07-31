@@ -99,8 +99,7 @@ int main(int argc, char **argv)
 
   // output
   double exact = N * (N + 1.0);
-  printf("n=%d nloop=%d %e(%.6e) cpu[sec]=%.3f\n",
-         107     N, nloop, sum, exact, cpu);
+  printf("n=%d nloop=%d %e(%.6e) cpu[sec]=%.3f\n",N, nloop, sum, exact, cpu);
 
   // release
   if (OCL) {
@@ -137,8 +136,10 @@ static int setup_ocl(cl_uint platform, cl_uint device, char *msg)
   // alloc
   source_str = (char *)malloc(MAX_SOURCE_SIZE * sizeof(char));
 
+  printf("aaa");
   // platform
   clGetPlatformIDs(MAX_PLATFORMS, platform_id, &num_platforms);
+  printf("bbb");
   if (platform >= num_platforms) {
     sprintf(msg, "error : platform = %d (limit = %d)", platform, num_platforms - 1);
     return 1;
