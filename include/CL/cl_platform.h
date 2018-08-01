@@ -242,7 +242,11 @@ typedef double                  cl_double;
 
 #else
 
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
 #include <stdint.h>
+#endif
 
 /* scalar types  */
 typedef int8_t          cl_char;
@@ -340,7 +344,10 @@ typedef double          cl_double   __attribute__((aligned(8)));
 
 #endif
 
+#ifdef __KERNEL__
+#else
 #include <stddef.h>
+#endif
 
 /* Mirror types to GL types. Mirror types allow us to avoid deciding which 87s to load based on whether we are using GL or GLES here. */
 typedef unsigned int cl_GLuint;
