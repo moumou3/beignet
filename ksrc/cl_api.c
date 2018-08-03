@@ -34,7 +34,7 @@
 #include "cl_utils.h"
 #include "cl_cmrt.h"
 
-// they are like cuda.h in gdev/cuda/driver/memcpy.c
+// they are like cuda.h in gdev/cuda/driver/memory.c
 #include "CL/cl.h"
 #include "CL/cl_ext.h"
 #include "CL/cl_intel.h"
