@@ -22,8 +22,15 @@
 #include "cl_utils.h"
 #include "cl_khr_icd.h"
 #include "CL/cl.h"
+#ifdef __KERNEL__
+
+#include "beignet_platform.h"
+
+
+#else
 #include <pthread.h>
 #include <assert.h>
+#endif
 
 /************************************************************************
   Every CL objects should have:
@@ -48,9 +55,9 @@ typedef struct _cl_base_object {
   cl_ulong magic;        /* Magic number for each CL object */
   atomic_t ref;          /* Reference for each CL object */
   list_node node;        /* CL object node belong to some container */
-  pthread_mutex_t mutex; /* THe mutex to protect this object MT safe */
-  pthread_cond_t cond;   /* Condition to wait for getting the object */
-  pthread_t owner;       /* The thread which own this object */
+  LOCK_T mutex; /* THe mutex to protect this object MT safe */
+//  pthread_cond_t cond;   /* Condition to wait for getting the object */
+  pid_t owner;       /* The thread which own this object editted for kernel*/
 } _cl_base_object;
 
 typedef struct _cl_base_object *cl_base_object;
@@ -62,8 +69,8 @@ typedef struct _cl_base_object *cl_base_object;
 #define CL_OBJECT_DEC_REF(obj) (atomic_dec(&((cl_base_object)obj)->ref))
 #define CL_OBJECT_GET_REF(obj) (atomic_read(&((cl_base_object)obj)->ref))
 
-#define CL_OBJECT_LOCK(obj) (pthread_mutex_lock(&((cl_base_object)obj)->mutex))
-#define CL_OBJECT_UNLOCK(obj) (pthread_mutex_unlock(&((cl_base_object)obj)->mutex))
+#define CL_OBJECT_LOCK(obj) (mutex_lock(&((cl_base_object)obj)->mutex))
+#define CL_OBJECT_UNLOCK(obj) (mutex_unlock(&((cl_base_object)obj)->mutex))
 
 extern void cl_object_init_base(cl_base_object obj, cl_ulong magic);
 extern void cl_object_destroy_base(cl_base_object obj);
