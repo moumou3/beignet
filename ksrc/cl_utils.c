@@ -17,8 +17,7 @@
  */
 
 #include "cl_utils.h"
-#include <string.h>
-#include <assert.h>
+#include <linux/string.h>
 
 LOCAL void
 list_node_insert_before(struct list_node *node, struct list_node *the_new)
@@ -43,7 +42,7 @@ list_node_insert_after(struct list_node *node, struct list_node *the_new)
 LOCAL void
 list_move(struct list_head *the_old, struct list_head *the_new)
 {
-  assert(list_empty(the_new));
+  ASSERT(list_empty(the_new));
   if (list_empty(the_old)) {
     return;
   }

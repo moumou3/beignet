@@ -20,8 +20,7 @@
 #ifndef __CL_DRIVER_H__
 #define __CL_DRIVER_H__
 
-#include <stdint.h>
-#include <stdlib.h>
+#include <linux/types.h>
 #include "cl_driver_type.h"
 #include "CL/cl_ext.h"
 /* Various limitations we should remove actually */

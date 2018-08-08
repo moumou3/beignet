@@ -21,7 +21,6 @@
 #define __CL_ALLOC_H__
 
 #include "cl_internals.h"
-#include <stdlib.h>
 
 /* Return a valid pointer for the requested memory block size */
 extern void *cl_malloc(size_t sz);
