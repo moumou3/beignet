@@ -30,11 +30,6 @@
 #include "cl_gbe_loader.h"
 #include "cl_alloc.h"
 
-#include <assert.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/sysinfo.h>
 
 #ifndef CL_VERSION_1_2
 #define CL_DEVICE_BUILT_IN_KERNELS 0x103F
@@ -799,7 +794,7 @@ glk12eu_break:
       ret = NULL;
       break;
     default:
-      printf("cl_get_gt_device(): error, unknown device: %x\n", device_id);
+      printk("cl_get_gt_device(): error, unknown device: %x\n", device_id);
   }
 
   if (ret == NULL)
@@ -892,7 +887,7 @@ cl_self_test(cl_device_id device, cl_self_test_res atomic_in_l3_flag)
                       ret = SELF_TEST_PASS;
                     } else {
                       ret = SELF_TEST_SLM_FAIL;
-                      printf("Beignet: self-test failed: (3, 7, 5) + (5, 7, 3) returned (%i, %i, %i)\n"
+                      printk("Beignet: self-test failed: (3, 7, 5) + (5, 7, 3) returned (%i, %i, %i)\n"
                              "See README.md or http://www.freedesktop.org/wiki/Software/Beignet/\n",
                              test_data[0], test_data[1], test_data[2]);
 
@@ -935,20 +930,20 @@ cl_get_device_ids(cl_platform_id    platform,
     if (ret == SELF_TEST_ATOMIC_FAIL) {
       device->atomic_test_result = ret;
       ret = cl_self_test(device, ret);
-      printf("Beignet: warning - disable atomic in L3 feature.\n");
+      printk("Beignet: warning - disable atomic in L3 feature.\n");
     }
 
     if(ret == SELF_TEST_SLM_FAIL) {
       int disable_self_test = 0;
       // can't use BVAR (backend/src/sys/cvar.hpp) here as it's C++
-      const char *env = getenv("OCL_IGNORE_SELF_TEST");
-      if (env != NULL) {
-        sscanf(env, "%i", &disable_self_test);
-      }
+      //const char *env = getenv("OCL_IGNORE_SELF_TEST");
+     // if (env != NULL) {
+      //  sscanf(env, "%i", &disable_self_test);
+     // }
       if (disable_self_test) {
-        printf("Beignet: Warning - overriding self-test failure\n");
+        printk("Beignet: Warning - overriding self-test failure\n");
       } else {
-        printf("Beignet: disabling non-working device\n");
+        printk("Beignet: disabling non-working device\n");
         device = 0;
       }
     }
@@ -1671,7 +1666,7 @@ cl_devices_list_check(cl_uint num_devices, const cl_device_id *devices)
   if (devices == NULL)
     return CL_INVALID_DEVICE;
 
-  assert(num_devices > 0);
+  ASSERT(num_devices > 0);
   for (i = 0; i < num_devices; i++) {
     if (!CL_OBJECT_IS_DEVICE(devices[i])) {
       return CL_INVALID_DEVICE;

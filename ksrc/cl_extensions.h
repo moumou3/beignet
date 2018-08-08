@@ -46,12 +46,13 @@
   DECL_EXT(khr_dx9_media_sharing)\
   DECL_EXT(khr_d3d11_sharing)\
 
-#define DECL_ALL_EXTENSIONS \
-  DECL_BASE_EXTENSIONS \
+#define DECL_ALL_EXTENSIONS 
+/* DECL_BASE_EXTENSIONS \
   DECL_OPT1_EXTENSIONS \
   DECL_INTEL_EXTENSIONS \
   DECL_GL_EXTENSIONS \
   DECL_D3D_EXTENSIONS
+*/ //ifdef PLATFORM_EXTENSION
 
 #define EXT_ID(name) cl_ ## name ## _ext_id
 #define EXT_STRUCT_NAME(name) cl_ ## name ## ext
