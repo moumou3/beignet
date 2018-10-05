@@ -209,6 +209,8 @@ namespace gbe {
       ctx = GBE_NEW(BxtContext, unit, name, deviceID, relaxMath);
     } else if (IS_KABYLAKE(deviceID)) {
       ctx = GBE_NEW(KblContext, unit, name, deviceID, relaxMath);
+    } else if (IS_COFFEELAKE(deviceID)) {
+      ctx = GBE_NEW(KblContext, unit, name, deviceID, relaxMath);
     } else if (IS_GEMINILAKE(deviceID)) {
       ctx = GBE_NEW(GlkContext, unit, name, deviceID, relaxMath);
     }
@@ -328,6 +330,7 @@ namespace gbe {
                                       (IS_SKYLAKE(deviceID) && MATCH_SKL_HEADER(binary)) || \
                                       (IS_BROXTON(deviceID) && MATCH_BXT_HEADER(binary)) || \
                                       (IS_KABYLAKE(deviceID) && MATCH_KBL_HEADER(binary)) || \
+                                      (IS_COFFEELAKE(deviceID) && MATCH_KBL_HEADER(binary)) || \
                                       (IS_GEMINILAKE(deviceID) && MATCH_GLK_HEADER(binary)) \
                                       )
 
@@ -436,6 +439,8 @@ namespace gbe {
         FILL_BXT_HEADER(*binary);
       }else if(IS_KABYLAKE(prog->deviceID)){
         FILL_KBL_HEADER(*binary);
+      }else if(IS_COFFEELAKE(prog->deviceID)){
+        FILL_KBL_HEADER(*binary);
       }else if(IS_GEMINILAKE(prog->deviceID)){
         FILL_GLK_HEADER(*binary);
       }else {
@@ -449,7 +454,11 @@ namespace gbe {
 #ifdef GBE_COMPILER_AVAILABLE
       std::string str;
       llvm::raw_string_ostream OS(str);
+#if LLVM_VERSION_MAJOR >= 7
+      llvm::WriteBitcodeToFile(*((llvm::Module*)prog->module), OS);
+#else
       llvm::WriteBitcodeToFile((llvm::Module*)prog->module, OS);
+#endif
       std::string& bin_str = OS.str();
       int llsz = bin_str.size();
       *binary = (char *)malloc(sizeof(char) * (llsz+1) );
@@ -540,7 +549,11 @@ namespace gbe {
                                     &modRef);
         src = llvm::unwrap(modRef);
       }
+#if LLVM_VERSION_MAJOR >= 7
+      llvm::Module* clone = llvm::CloneModule(*src).release();
+#else
       llvm::Module* clone = llvm::CloneModule(src).release();
+#endif
       if (LLVMLinkModules2(wrap(dst), wrap(clone))) {
 #elif LLVM_VERSION_MAJOR * 10 + LLVM_VERSION_MINOR >= 37
       if (LLVMLinkModules(wrap(dst), wrap(src), LLVMLinkerPreserveSource_Removed, &errMsg)) {
