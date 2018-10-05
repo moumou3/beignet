@@ -926,7 +926,8 @@ cl_get_device_ids(cl_platform_id    platform,
   /* Do we have a usable device? */
   device = cl_get_gt_device(device_type);
   if (device) {
-    cl_self_test_res ret = cl_self_test(device, SELF_TEST_PASS);
+    //cl_self_test_res ret = cl_self_test(device, SELF_TEST_PASS);
+    ret = 0;
     if (ret == SELF_TEST_ATOMIC_FAIL) {
       device->atomic_test_result = ret;
       ret = cl_self_test(device, ret);

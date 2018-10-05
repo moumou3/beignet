@@ -108,6 +108,7 @@ clCreateSubBuffer(cl_mem                buffer,
                   cl_int *              errcode_ret)
 {
   cl_mem mem = NULL;
+#ifdef KERNELCREATESUBBUFFER
   cl_int err = CL_SUCCESS;
 
   CHECK_MEM(buffer);
@@ -117,6 +118,7 @@ clCreateSubBuffer(cl_mem                buffer,
 error:
   if (errcode_ret)
     *errcode_ret = err;
+#endif
   return mem;
 }
 
@@ -129,6 +131,7 @@ clCreateImage(cl_context context,
               cl_int * errcode_ret)
 {
   cl_mem mem = NULL;
+#ifdef KERNELCREATEIMAGE
   cl_int err = CL_SUCCESS;
   CHECK_CONTEXT (context);
   if (image_format == NULL) {
@@ -185,6 +188,7 @@ clCreateImage(cl_context context,
 error:
   if (errcode_ret)
     *errcode_ret = err;
+#endif
   return mem;
 }
 
@@ -829,14 +833,14 @@ clBuildProgram(cl_program            program,
 
   /* Everything is easy. We only support one device anyway */
   if (num_devices != 0) {
-    assert(program->ctx);
+    ASSERT(program->ctx);
     err = cl_devices_list_include_check(program->ctx->device_num,
                                         program->ctx->devices, num_devices, device_list);
     if (err)
       goto error;
   }
 
-  assert(program->source_type == FROM_LLVM ||
+  ASSERT(program->source_type == FROM_LLVM ||
          program->source_type == FROM_SOURCE ||
          program->source_type == FROM_LLVM_SPIR ||
          program->source_type == FROM_BINARY ||
@@ -874,7 +878,7 @@ clCompileProgram(cl_program            program ,
 
   /* Everything is easy. We only support one device anyway */
   if (num_devices != 0) {
-    assert(program->ctx);
+    ASSERT(program->ctx);
     err = cl_devices_list_include_check(program->ctx->device_num,
                                         program->ctx->devices, num_devices, device_list);
     if (err)
@@ -882,7 +886,7 @@ clCompileProgram(cl_program            program ,
   }
 
   /* TODO support create program from binary */
-  assert(program->source_type == FROM_LLVM ||
+  ASSERT(program->source_type == FROM_LLVM ||
       program->source_type == FROM_SOURCE ||
       program->source_type == FROM_LLVM_SPIR ||
       program->source_type == FROM_BINARY);
