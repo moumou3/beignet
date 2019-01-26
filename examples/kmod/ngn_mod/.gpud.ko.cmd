@@ -1,0 +1,1 @@
+cmd_/home/motoya/beignet/examples/kmod/ngn_mod/gpud.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/motoya/beignet/examples/kmod/ngn_mod/gpud.ko /home/motoya/beignet/examples/kmod/ngn_mod/gpud.o /home/motoya/beignet/examples/kmod/ngn_mod/gpud.mod.o ;  true

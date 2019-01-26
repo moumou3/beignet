@@ -1,0 +1,5 @@
+0x00000000	gpud_task	/home/motoya/beignet/examples/kmod/ngn_mod/gpud	EXPORT_SYMBOL
+0x00000000	m2	/home/motoya/beignet/examples/kmod/ngn_mod/gpud	EXPORT_SYMBOL
+0x00000000	summation	/home/motoya/beignet/examples/kmod/ngn_mod/gpud	EXPORT_SYMBOL
+0x00000000	gpud_flag	/home/motoya/beignet/examples/kmod/ngn_mod/gpud	EXPORT_SYMBOL
+0x00000000	m1	/home/motoya/beignet/examples/kmod/ngn_mod/gpud	EXPORT_SYMBOL

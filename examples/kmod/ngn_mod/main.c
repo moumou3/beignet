@@ -1,178 +1,320 @@
-#include <cl.h>
+#include <linux/init.h>           // Macros used to mark up functions e.g. __init __exit
+#include <linux/module.h>         // Core header for loading LKMs into the kernel
+#include <linux/device.h> 
 #include <linux/kthread.h>
 #include <linux/module.h>
-#include <vmalloc.h>
+#include <linux/pid.h>
+#include <linux/slab.h>
+#include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/time.h>
+#include <linux/mm.h>
 #include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <asm/siginfo.h>
+#include "gpu_ioctl.h"
 
+#define  DEVICE_NAME "comgpu"
+#define CLASS_NAME "testgpu" 
+#define DEV_GPU_PROCESS 1
+#define DEV_GPU_PROCESS2 2
+#define NPAGES 16
 
 
 
 
 
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("KSPACE NIC GPU NIC SERVER");
+MODULE_DESCRIPTION("KERNEL GPU TASK PROjCESS");
 MODULE_AUTHOR("Motoya Tomoe");
 
 
+static int majorNumber;
+static char   message[256] = {0};           
+static short  size_of_message;              
+static int    numberOpens = 0; 
+static struct device* comgpu;
+static struct class*  testgpuClass  = NULL;
+static void* kmalloc_ptr;
+static int* kmalloc_area;
+extern int m1[PACKET_NUM];
+extern int m2[PACKET_NUM];
+extern int summation[PACKET_NUM]; 
 
-static int setup_ocl(cl_uint platform, cl_uint device, char *msg)
-{ 
-
-  cl_context     context = NULL;
-  cl_program     program = NULL;
-  cl_platform_id platform_id[MAX_PLATFORMS];
-  cl_device_id   device_id[MAX_DEVICES];
-
-  FILE *fp;
-  char *source_str;
-  char str[BUFSIZ];
-  size_t source_size, ret_size, size;
-  cl_uint num_platforms, num_devices;
-  cl_int ret;
-
-  // alloc
-  source_str = (char *)vmalloc(MAX_SOURCE_SIZE * sizeof(char));
-
-  // platform
-  clGetPlatformIDs(MAX_PLATFORMS, platform_id, &num_platforms);
-  if (platform >= num_platforms) {
-    sprintf(msg, "error : platform = %d (limit = %d)", platform, num_platforms - 1);
-    return 1;
-  }
-
-  // device
-  clGetDeviceIDs(platform_id[platform], CL_DEVICE_TYPE_ALL, MAX_DEVICES, device_id, &num_devices);
-  if (device >= num_devices) {
-    sprintf(msg, "error : device = %d (limit = %d)", device, num_devices - 1);
-    return 1;
-  }
-
-  // device name (option)
-  clGetDeviceInfo(device_id[device], CL_DEVICE_NAME, sizeof(str), str, &ret_size);
-  sprintf(msg, "%s (platform = %d, device = %d)", str, platform, device);
-
-  // context
-  context = clCreateContext(NULL, 1, &device_id[device], NULL, NULL, &ret);
-
-  // command queue
-  Queue = clCreateCommandQueue(context, device_id[device], 0, &ret);
-
-  // source
-  if ((fp = filp_open("vadd.cl", O_RDONLY, 0)) == NULL) {
-    sprintf(msg, "kernel source open error");
-    return 1;
-  }
-  source_size = kernel_read(fp, 0, source_str, MAX_SOURCE_SIZE);
-  filp_close(fp, NULL);
-
-  // program
-  program = clCreateProgramWithSource(context, 1, (const char **)&source_str, (const size_t *)&source_size, &ret);
-  if (ret != CL_SUCCESS) {
-    sprintf(msg, "clCreateProgramWithSource() error");
-    return 1;
-  }
-
-  // build
-  if (clBuildProgram(program, 1, &device_id[device], NULL, NULL, NULL) != CL_SUCCESS) {
-    sprintf(msg, "clBuildProgram() error");
-    return 1;
-  }
-
-  // kernel
-  k_vadd = clCreateKernel(program, "vadd", &ret);
-  if (ret != CL_SUCCESS) {
-    sprintf(msg, "clCreateKernel() error");
-    return 1;
-  }
-
-  // memory object
-  size = N * sizeof(float);
-  d_A = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &ret);
-  d_B = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &ret);
-  d_C = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &ret);
-
-  // release
-  clReleaseProgram(program);
-  clReleaseContext(context);
-
-  // free
-  vfree(source_str);
-
-  return 0;
+extern struct task_struct *gpud_task;
+extern int gpud_flag;
 
 
-}
+static int dev_open(struct inode *inodep, struct file *filep);
+static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset);
+static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset);
+static int dev_release(struct inode *inodep, struct file *filep);
+static int mmap_kmem(struct file *filp, struct vm_area_struct *vma);
+static long dev_ioctl(struct file* filep, unsigned int cmd, unsigned long arg); 
+static void ioctl_gpuprocess(void __user *arg); 
+static void ioctl_gpuprocess2(void __user *arg); 
+static void ioctl_getsum(void __user *arg); 
 
-static int __init kspace_ngn_init(void)
+static struct file_operations fops =
+{
+  .open = dev_open,
+  .read = dev_read,
+  .write = dev_write,
+  .release = dev_release,
+  .mmap = mmap_kmem,  
+  .unlocked_ioctl = dev_ioctl
+} ;
+
+
+
+static int __init kspace_gpu_init(void)
 {
 
-  int platform = 0;
-  int device = 0;
-  struct timeval tv;
-  struct timeval tv_ngn_start, tv_ngn_end;
+  int ret = 0;
+  int i;
 
+  if ((kmalloc_ptr = kmalloc((NPAGES + 2) * PAGE_SIZE, GFP_KERNEL)) == NULL) {  
+    ret = -ENOMEM;  
+    goto out;  
+  }
+   /* round it up to the page bondary */
+  kmalloc_area = (int *)((((unsigned long)kmalloc_ptr) + PAGE_SIZE - 1) & PAGE_MASK); 
+  for (i = 0; i < NPAGES * PAGE_SIZE; i+= PAGE_SIZE) {  
+    SetPageReserved(virt_to_page(((unsigned long)kmalloc_area) + i));  
+  }  
+  printk("kmalloc_area %p", kmalloc_area);
+  /* store a pattern in the memory - the test application will check for it */  
+  for (i = 0; i < (NPAGES * PAGE_SIZE / sizeof(int)); i += 2) {  
+    kmalloc_area[i] = (0xdead << 16) + i;  
+    kmalloc_area[i + 1] = (0xbeef << 16) + i;  
+  } 
 
-  N = 1000;
-
-
-  // alloc host arrays
-  size_t size = N * sizeof(float);
-  A = (float *)vmalloc(size);
-  B = (float *)vmalloc(size);
-  C = (float *)vmalloc(size);
-
-  // setup problem
-  for (int i = 0; i < N; i++) {
-    A[i] = (float)(1 + i);
-    B[i] = (float)(1 + i);
+  majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
+  if (majorNumber < 0){
+    printk(KERN_ALERT "failed to register a major number\n");
+    return majorNumber;
   }
 
-  // setup OpenCL
-  char msg[BUFSIZ];
-  int ret = setup_ocl((cl_uint)platform, (cl_uint)device, msg);
-  printk("%s\n", msg);
-  if (ret) {
-    exit(1);
+  testgpuClass = class_create(THIS_MODULE, CLASS_NAME);
+  if (IS_ERR(testgpuClass)){                // Check for error and clean up if there is
+    unregister_chrdev(majorNumber, DEVICE_NAME);
+    printk(KERN_ALERT "Failed to register device class\n");
+    return PTR_ERR(testgpuClass);          // Correct way to return an error on a pointer
   }
+  comgpu = device_create(testgpuClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
+  printk("Hello device");
 
-  // timer
-  do_gettimeofday(&tv_ngn_start);
 
-  // copy host to device
-  clEnqueueWriteBuffer(Queue, d_A, CL_TRUE, 0, size, A, 0, NULL, NULL);
-  clEnqueueWriteBuffer(Queue, d_B, CL_TRUE, 0, size, B, 0, NULL, NULL);
+  return ret;
 
-  // run
-  vadd_calc();
 
-  // copy device to host
-  clEnqueueReadBuffer(Queue, d_C, CL_TRUE, 0, size, C, 0, NULL, NULL);
+out:  
+  return ret; 
 
-  // timer
-  do_gettimeofday(&tv_ngn_end);
-
-  // output
-
-  // release
-  clReleaseMemObject(d_A);
-  clReleaseMemObject(d_B);
-  clReleaseMemObject(d_C);
-  clReleaseKernel(k_vadd);
-  clReleaseCommandQueue(Queue);
-
-  // free
-  vfree(A);
-  vfree(B);
-  vfree(C);
-
-  return 0;
 
 }
 
-static void __exit kspace_ngn_exit(void)
+static void __exit kspace_gpu_exit(void)
 {
+  int i;
+  device_destroy(testgpuClass, MKDEV(majorNumber, 0));     // remove the device
+  class_unregister(testgpuClass);                          // unregister the device class
+  class_destroy(testgpuClass);                             // remove the device class
+  unregister_chrdev(majorNumber, DEVICE_NAME);             // unregister the major number
+
+  /* unreserve the pages */  
+  for (i = 0; i < NPAGES * PAGE_SIZE; i+= PAGE_SIZE) {  
+    ClearPageReserved(virt_to_page(((unsigned long)kmalloc_area) + i));  
+  }  
+  /* free the memory areas */  
+  kfree(kmalloc_ptr);  
+  printk(KERN_INFO "EBBChar: Goodbye from the LKM!\n");
+
 }
 
-module_init(kspace_ngn_init);
-module_exit(kspace_ngn_exit);
+static int dev_open(struct inode *inodep, struct file *filep){
+  numberOpens++;
+  printk(KERN_INFO "EBBChar: Device has been opened %d time(s)\n", numberOpens);
+  return 0;
+}
+
+static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
+  int error_count = 0;
+  // copy_to_user has the format ( * to, *from, size) and returns 0 on success
+  error_count = copy_to_user(buffer, message, size_of_message);
+
+  if (error_count==0){            // if true then have success
+    printk(KERN_INFO "EBBChar: Sent %d characters to the user\n", size_of_message);
+    return (size_of_message=0);  // clear the position to the start and return 0
+  }
+  else {
+    printk(KERN_INFO "EBBChar: Failed to send %d characters to the user\n", error_count);
+    return -EFAULT;              // Failed -- return a bad address message (i.e. -14)
+  }
+}
+
+static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
+
+
+  copy_from_user(message, buffer, len); 
+  message[len] = '\0';
+
+  //sprintf(message, "%s(%zu letters)", buffer, len);   // appending received string with its length
+  size_of_message = strlen(message);                 // store the length of the stored message
+  printk(KERN_INFO "EBBChar: Received %zu characters from the user\n", len);
+
+  return len;
+}
+
+
+static int mmap_kmem(struct file *filp, struct vm_area_struct *vma)  
+{  
+  int ret;  
+  long length = vma->vm_end - vma->vm_start;  
+  printk("mmap called vm_start, %x", vma->vm_start);
+
+  /* check length - do not allow larger mappings than the number of 
+   *            pages allocated */  
+  if (length > NPAGES * PAGE_SIZE)  
+    return -EIO;  
+
+  /* map the whole physically contiguous area in one piece */  
+  if ((ret = remap_pfn_range(vma,  
+                             vma->vm_start,  
+                             virt_to_phys((void *)kmalloc_area) >> PAGE_SHIFT,  
+                             length,  
+                             vma->vm_page_prot)) < 0) {  
+    return ret;  
+  }  
+
+  return 0;  
+}
+
+static void ioctl_gpuprocess(void __user *arg) {
+
+  printk("kmalloc_area %x\n", kmalloc_area[0]);
+
+}
+
+static void ioctl_gpuprocess2(void __user *arg) {
+
+  struct gpu_ioctl_args __user *uarg = (struct gpu_ioctl_args __user*)arg;
+  struct gpu_ioctl_args karg;
+  
+  //kernel task for gpu
+  int matrix1[PACKET_NUM] = {1,2,3};
+  int matrix2[PACKET_NUM] = {1,2,3};
+
+  printk(KERN_INFO "gpu proc2 \n");
+
+  copy_from_user(&karg, uarg, sizeof(struct gpu_ioctl_args));
+
+  void __user *mat1 = karg.matrix1;
+  void __user *mat2 = karg.matrix2;
+  copy_to_user(mat1, matrix1, sizeof(int) * PACKET_NUM);
+  copy_to_user(mat2, matrix2, sizeof(int) * PACKET_NUM);
+
+
+
+
+  //delete by compiler or human power ???
+  /*
+  for (int i = 0; i < 100; i++)
+    sum[i] = matrix[i] + matrix2[i]; 
+  */
+
+
+}
+static void ioctl_getsum(void __user *arg)
+{
+  int __user *uarg =  (int __user*) arg;
+  int sum[PACKET_NUM] = {0};
+  copy_from_user(sum, uarg, sizeof(int) * PACKET_NUM);
+  printk(KERN_INFO "sum = %d, %d", sum[0], sum[1]);
+
+}
+
+static void send_signal(int signum, struct task_struct *sigtask) {
+
+  struct siginfo info;
+  memset(&info, 0, sizeof(struct siginfo));
+  info.si_signo = signum;
+  info.si_code = 0;
+  info.si_int = 1234;
+
+  int ret = send_sig_info(signum, &info, sigtask);
+  if (ret < 0){
+    printk("error sending signal %d", ret);
+  }
+
+}
+
+static void ioctl_kstart(void __user *arg) 
+{
+  //kernel start e.g network packet processing
+  //for (i=0; i < LNUM; i++) SIMD process;
+  //set_gpu_kernel_program
+  
+  int matrix1[PACKET_NUM] = {1,2,3};
+  int matrix2[PACKET_NUM] = {2,3,4};
+  int sum[PACKET_NUM] = {0};
+  int i=0;;
+
+
+
+  memcpy(m1, matrix1, sizeof(int) * PACKET_NUM);
+  memcpy(m2, matrix2, sizeof(int) * PACKET_NUM);
+
+  send_signal(SIGUSR1, gpud_task);
+  printk("sent signal to %d", gpud_task->pid);
+  
+  while(!gpud_flag && i++ < 1000){
+    schedule();
+    printk("signal handle end waiting %d", i);
+  }
+ 
+
+  printk("receive flag");
+  memcpy(sum, summation, sizeof(int) * PACKET_NUM);
+  printk(KERN_INFO "sum = %d, %d", sum[0], sum[1]);
+  //alloc_svm 
+  
+ //schedule to process
+ 
+//
+
+
+}
+
+static long dev_ioctl(struct file* filep, unsigned int cmd, unsigned long arg) {
+
+  void __user* uarg =  (void __user*) arg;
+  printk(KERN_INFO "dev_ioctl %d\n", cmd);
+
+  switch (cmd) {
+    case 1000:
+      ioctl_gpuprocess(uarg);
+      break;
+    case 1001:
+      printk("aaa");
+      ioctl_gpuprocess2(uarg);
+      break;
+    case 1002:
+      printk("bbb");
+      ioctl_getsum(uarg);
+      break;
+    case 1003:
+      printk("ccc");
+      ioctl_kstart(uarg);
+      break;
+  }
+  return 0;
+  
+}
+
+static int dev_release(struct inode *inodep, struct file *filep){
+  printk(KERN_INFO "EBBChar: Device successfully closed\n");
+  return 0;
+}
+module_init(kspace_gpu_init);
+module_exit(kspace_gpu_exit);

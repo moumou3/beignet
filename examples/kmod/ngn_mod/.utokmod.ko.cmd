@@ -1,0 +1,1 @@
+cmd_/home/motoya/beignet/examples/kmod/ngn_mod/utokmod.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/motoya/beignet/examples/kmod/ngn_mod/utokmod.ko /home/motoya/beignet/examples/kmod/ngn_mod/utokmod.o /home/motoya/beignet/examples/kmod/ngn_mod/utokmod.mod.o ;  true
