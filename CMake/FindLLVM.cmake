@@ -8,7 +8,7 @@
 # LLVM_FOUND       - True if llvm found.
 if (LLVM_INSTALL_DIR)
   find_program(LLVM_CONFIG_EXECUTABLE
-               NAMES llvm-config-37 llvm-config-3.7 llvm-config-36 llvm-config-3.6 llvm-config-38 llvm-config-3.8 llvm-config-39 llvm-config-3.9 llvm-config llvm-config-35 llvm-config-3.5 llvm-config-34 llvm-config-3.4
+    NAMES llvm-config-37 llvm-config-3.7 llvm-config-36 llvm-config-3.6 llvm-config-38 llvm-config-3.8 llvm-config-39 llvm-config-3.9 llvm-config llvm-config-35 llvm-config-3.5 llvm-config-34 llvm-config-3.4
                DOC "llvm-config executable"
                PATHS ${LLVM_INSTALL_DIR} NO_DEFAULT_PATH)
 else (LLVM_INSTALL_DIR)
@@ -113,10 +113,10 @@ macro(add_one_lib name)
 endmacro()
 
 #Assume clang lib path same as llvm lib path
+add_one_lib("clangCodeGen")
 add_one_lib("clangFrontend")
 add_one_lib("clangSerialization")
 add_one_lib("clangDriver")
-add_one_lib("clangCodeGen")
 add_one_lib("clangSema")
 add_one_lib("clangStaticAnalyzerFrontend")
 add_one_lib("clangStaticAnalyzerCheckers")
