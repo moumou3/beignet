@@ -324,7 +324,6 @@ intel_driver_check_device(int dev_fd)
     close(dev_fd);
     return 0;
   }
-  ret = !strcmp(version->name, "i915");
   ret = !strcmp(version->name, "i915_bpo");
   drmFreeVersion(version);
   // Don't print an error here if this device is using a different driver,
