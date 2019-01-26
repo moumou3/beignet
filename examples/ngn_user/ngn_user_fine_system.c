@@ -42,7 +42,7 @@ int N;
 float *A, *B, *C;
 cl_mem d_A, d_B, d_C;
 void *h_a;
-size_t memsize = 1 << 20;
+size_t memsize = 1000000;
 
 int OCL;
 
@@ -228,9 +228,13 @@ static int setup_ocl(cl_uint platform, cl_uint device, char *msg)
     return 1;
   }
 
-  h_a = clSVMAlloc(context, CL_MEM_READ_WRITE, memsize, 0);
+  cl_bool is_system;
+  is_system = 1;
+  clSetKernelExecInfo(k_vadd, CL_KERNEL_EXEC_INFO_SVM_PTRS,sizeof(cl_bool), &is_system);  
+  printf("is system %d", is_system);
+
+  h_a = malloc(memsize);
   memset(h_a, 2, memsize);
-  clEnqueueSVMMap(Queue, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, h_a, 100, 0, NULL, NULL);
   // memory object
   size = N * N * sizeof(float);
   d_A = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &ret);

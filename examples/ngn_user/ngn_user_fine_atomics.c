@@ -23,6 +23,15 @@
 static int setup_ocl(cl_uint, cl_uint, char *);
 static void vadd_calc();
 static void vadd();
+static inline int sumarray(volatile int* arr, size_t len)
+{
+  int sum = 0;
+  for (size_t i = 0; i < 100; ++i) {
+    sum += arr[i];
+  }
+
+  return sum;
+}
 static inline void tvsub(struct timeval *x,
                          struct timeval *y,
                          struct timeval *ret)
@@ -34,6 +43,13 @@ static inline void tvsub(struct timeval *x,
     ret->tv_usec += 1000000;
   }
 }
+static inline unsigned long long rdtsc() {
+  unsigned long long ret;
+
+  __asm__ volatile ("rdtsc" : "=A" (ret));
+
+  return ret;
+}
              
 
 cl_command_queue Queue;
@@ -42,7 +58,8 @@ int N;
 float *A, *B, *C;
 cl_mem d_A, d_B, d_C;
 void *h_a;
-size_t memsize = 1 << 20;
+size_t memsize;
+int lnum;
 
 int OCL;
 
@@ -54,6 +71,8 @@ int main(int argc, char **argv)
 
   // arguments
   N = atoi(argv[1]);
+  lnum = atoi(argv[2]);
+  memsize = sizeof(int) * lnum ;
   if (argc >= 5) {
     N        = atoi(argv[1]);
     nloop    = atoi(argv[2]);
@@ -84,8 +103,6 @@ int main(int argc, char **argv)
     }
   }
 
-  // timer
-  clock_t t0 = clock();
 
   // copy host to device
   if (OCL) {
@@ -103,9 +120,6 @@ int main(int argc, char **argv)
     clEnqueueReadBuffer(Queue, d_C, CL_TRUE, 0, size, C, 0, NULL, NULL);
   }
 
-  // timer
-  clock_t t1 = clock();
-  double cpu = (double)(t1 - t0) / CLOCKS_PER_SEC;
 
   // sum
   double sum = 0;
@@ -114,8 +128,6 @@ int main(int argc, char **argv)
   }
 
   // output
-  double exact = N * (N + 1.0);
-  printf("n=%d nloop=%d %e(%.6e) cpu[sec]=%.3f\n",N, nloop, sum, exact, cpu);
 
   // release
   if (OCL) {
@@ -172,6 +184,7 @@ static int setup_ocl(cl_uint platform, cl_uint device, char *msg)
   char version[100];
   clGetPlatformInfo(platform_id[platform], CL_PLATFORM_VERSION, 100, version, &ret_size);
   printf("version, %s", version);
+
   //svm capability
   cl_device_svm_capabilities caps;
   clGetDeviceInfo(device_id[0], CL_DEVICE_SVM_CAPABILITIES, sizeof(cl_device_svm_capabilities), &caps, NULL);
@@ -228,9 +241,21 @@ static int setup_ocl(cl_uint platform, cl_uint device, char *msg)
     return 1;
   }
 
+  
+  unsigned long long start3, end3;
+  start3 = rdtsc();
+#ifdef FINE_GRAIN_ON
+  h_a = clSVMAlloc(context, CL_MEM_READ_WRITE|CL_MEM_SVM_FINE_GRAIN_BUFFER | CL_MEM_SVM_ATOMICS, memsize, 0);
+  //printf("fine grain on\n\n");
+#else
   h_a = clSVMAlloc(context, CL_MEM_READ_WRITE, memsize, 0);
-  memset(h_a, 2, memsize);
-  clEnqueueSVMMap(Queue, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, h_a, 100, 0, NULL, NULL);
+  //printf("coarse grain on\n\n");
+#endif
+  end3 = rdtsc();
+
+
+  printf("svmalloc time %llu\n", end3 - start3);
+
   // memory object
   size = N * N * sizeof(float);
   d_A = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &ret);
@@ -260,42 +285,46 @@ static void vadd_calc()
     clSetKernelArg(k_vadd, 2, sizeof(cl_mem), (void *)&d_C);
     clSetKernelArg(k_vadd, 3, sizeof(int),    (void *)&N);
     clSetKernelArgSVMPointer(k_vadd, 4, h_a);
+    clSetKernelArgSVMPointer(k_vadd, 5, lnum);
 
     // work item
     local_item_size = 256;
     global_item_size = ((N + local_item_size - 1) / local_item_size) * local_item_size;
 
-    struct timeval tv_enqueuek_start, tv_enqueuek_end, tv;
-    struct timeval tv_enqueuek_start_cache, tv_enqueuek_end_cache, tv_cache;
-    float enqueue_time;
-    void* tmp = malloc(memsize);
-    void* tmp2 = malloc(memsize);
+    unsigned long long start, end;
+//    printf("start time %llu\nn", start);
 
-    
-    // run
-  gettimeofday(&tv_enqueuek_start, NULL);
-    clEnqueueNDRangeKernel(Queue, k_vadd, 1, NULL, &global_item_size, &local_item_size, 0, NULL, NULL);
-  //clEnqueueSVMMap(Queue, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, h_a, 100, 0, NULL, NULL);
-  gettimeofday(&tv_enqueuek_start_cache, NULL);
-  memcpy(tmp, h_a, memsize);
-  gettimeofday(&tv_enqueuek_end_cache, NULL);
-  tvsub(&tv_enqueuek_end_cache, &tv_enqueuek_start_cache, &tv);
-  enqueue_time = tv.tv_sec * 1000.0 + (float) tv.tv_usec / 1000.0;
-  printf("time without cache:%f ", enqueue_time);
 
-  unsigned int testing  = *(int*)h_a;
-  printf("testing %x", testing);
-  gettimeofday(&tv_enqueuek_start_cache, NULL);
-  memcpy(tmp2, h_a, memsize);
-  gettimeofday(&tv_enqueuek_end_cache, NULL);
-  tvsub(&tv_enqueuek_end_cache, &tv_enqueuek_start_cache, &tv);
-  enqueue_time = tv.tv_sec * 1000.0 + (float) tv.tv_usec / 1000.0;
-  printf("time in cache:%f ", enqueue_time);
-    clFinish(Queue);
-  gettimeofday(&tv_enqueuek_end, NULL);
-  tvsub(&tv_enqueuek_end, &tv_enqueuek_start, &tv);
-  enqueue_time = tv.tv_sec * 1000.0 + (float) tv.tv_usec / 1000.0;
-  printf("enqueue kernel: %f\n", enqueue_time);
+  int tmp3;
+  start = rdtsc();
+   // run
+  clEnqueueNDRangeKernel(Queue, k_vadd, 1, NULL, &global_item_size, &local_item_size, 0, NULL, NULL);
+  clFinish(Queue);
+
+  end = rdtsc();
+  printf("exec time %llu\n", end - start);
+
+#ifndef FINE_GRAIN_ON
+  start = rdtsc();
+  clEnqueueSVMMap(Queue, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, h_a, memsize, 0, NULL, NULL);
+  end = rdtsc();
+  printf("map time %llu\n", end - start);
+  clEnqueueSVMUnmap(Queue, CL_TRUE, CL_MAP_WRITE_INVALIDATE_REGION, h_a, memsize, 0, NULL, NULL);
+#endif
+
+  start = rdtsc();
+  int sum = sumarray(h_a, memsize);
+  end = rdtsc();
+  printf("without cache %llu, sum:%d\n", end - start, sum);
+
+  start = rdtsc();
+  int sum2 = sumarray(h_a, memsize);
+  end = rdtsc();
+  // printf("in  cache %llu\n, value %x", end - start, *(unsigned int*)h_a);
+  printf("in  cache %llu\n, sum %d\n", end - start, sum2);
+
+  memset(h_a, 0, memsize);
+
   }
   else {
     // serial code
